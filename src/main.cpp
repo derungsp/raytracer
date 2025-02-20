@@ -5,6 +5,7 @@
 #include <chrono>
 #include <sstream>
 #include <cmath>
+#include <vector>
 
 std::string getTimestampedFilename()
 {
@@ -24,21 +25,40 @@ std::string getTimestampedFilename()
     return filename.str();
 }
 
-bool isInCircle(int x, int y, int cx, int cy, int r)
+bool intersectsCircle(Vector2D rayOrigin, Vector2D rayDir, Vector2D circleCenter, double radius)
 {
-    int dx = x - cx;
-    int dy = y - cy;
-    return (dx * dx + dy * dy) <= (r * r);
+    Vector2D oc = rayOrigin - circleCenter;
+    double a = rayDir.x * rayDir.x + rayDir.y * rayDir.y;
+    double b = 2.0 * (oc.x * rayDir.x + oc.y * rayDir.y);
+    double c = oc.x * oc.x + oc.y * oc.y - radius * radius;
+    double discriminant = b * b - 4 * a * c;
+    return discriminant >= 0;
 }
 
 int main()
 {
-    const int width = 800;
-    const int height = 500;
+    const int width = 1600;
+    const int height = 1000;
+    const Vector2D circleCenter(width / 2, height / 2);
+    const double radius = 100.0;
 
-    const int midX = width - (width / 2);
-    const int midY = height - (height / 2);
-    const int radius = 100;
+    std::vector<Vector2D> rayOrigins;
+    std::vector<Vector2D> rayDirs;
+
+    rayOrigins.push_back(Vector2D(0, height / 2));
+    rayDirs.push_back(Vector2D(1, 0));
+
+    rayOrigins.push_back(Vector2D(0, height / 4));
+    rayDirs.push_back(Vector2D(1, 0));
+
+    rayOrigins.push_back(Vector2D(0, 3 * height / 4));
+    rayDirs.push_back(Vector2D(1, 0));
+
+    for (double x = 0.0; x < 10.0; x += 0.1)
+    {
+        rayOrigins.push_back(Vector2D(0, 0));
+        rayDirs.push_back(Vector2D(x, 1));
+    }
 
     std::string filename = getTimestampedFilename();
     std::ofstream image(filename);
@@ -49,7 +69,35 @@ int main()
     {
         for (int x = 0; x < width; ++x)
         {
-            if (isInCircle(x, y, midX, midY, radius))
+            Vector2D currentPoint(x, y);
+            bool isRay = false;
+            bool isIntersecting = false;
+
+            for (size_t i = 0; i < rayOrigins.size(); ++i)
+            {
+                bool onRay = (x >= (int)rayOrigins[i].x && y == (int)(rayOrigins[i].y + (x - rayOrigins[i].x) * rayDirs[i].y / rayDirs[i].x));
+                bool intersects = intersectsCircle(rayOrigins[i], rayDirs[i], circleCenter, radius);
+
+                if (onRay)
+                {
+                    isRay = true;
+                    if (intersects)
+                    {
+                        isIntersecting = true;
+                        break;
+                    }
+                }
+            }
+
+            if (isRay && isIntersecting)
+            {
+                image << "0 255 0\n";
+            }
+            else if (isRay && !isIntersecting)
+            {
+                image << "0 0 255\n";
+            }
+            else if ((x - circleCenter.x) * (x - circleCenter.x) + (y - circleCenter.y) * (y - circleCenter.y) <= radius * radius)
             {
                 image << "255 0 0\n";
             }
@@ -61,6 +109,6 @@ int main()
     }
 
     image.close();
-    std::cout << "image saved as image.ppm\n";
+    std::cout << "Image saved as " << filename << "\n";
     return 0;
 }
