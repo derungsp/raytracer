@@ -1,114 +1,75 @@
-#include "Vector2D.h"
+#include "Color.h"
+#include "Ray.h"
+#include "Vector3D.h"
+
 #include <iostream>
-#include <fstream>
-#include <cstdlib>
-#include <chrono>
-#include <sstream>
-#include <cmath>
-#include <vector>
 
-std::string getTimestampedFilename()
+bool hit_sphere(const Point3D &center, double radius, const ray &r)
 {
-    std::time_t now = std::time(nullptr);
-    std::tm *localTime = std::localtime(&now);
-
-    std::ostringstream filename;
-    filename << "out/image_"
-             << (localTime->tm_year + 1900) << "-"
-             << (localTime->tm_mon + 1) << "-"
-             << localTime->tm_mday << "_"
-             << localTime->tm_hour << "-"
-             << localTime->tm_min << "-"
-             << localTime->tm_sec
-             << ".ppm";
-
-    return filename.str();
+    Vector3D oc = center - r.origin();
+    auto a = dot(r.direction(), r.direction());
+    auto b = -2.0 * dot(r.direction(), oc);
+    auto c = dot(oc, oc) - radius * radius;
+    auto discriminant = b * b - 4 * a * c;
+    return (discriminant >= 0);
 }
 
-bool intersectsCircle(Vector2D rayOrigin, Vector2D rayDir, Vector2D circleCenter, double radius)
+Color ray_color(const ray &r)
 {
-    Vector2D oc = rayOrigin - circleCenter;
-    double a = rayDir.x * rayDir.x + rayDir.y * rayDir.y;
-    double b = 2.0 * (oc.x * rayDir.x + oc.y * rayDir.y);
-    double c = oc.x * oc.x + oc.y * oc.y - radius * radius;
-    double discriminant = b * b - 4 * a * c;
-    return discriminant >= 0;
+    Color accumulated_color(0, 0, 0);
+
+    if (hit_sphere(Point3D(-0.25, -0.25, -1), 0.5, r))
+        accumulated_color += Color(1, 0, 0);
+    if (hit_sphere(Point3D(0.25, -0.25, -1), 0.5, r))
+        accumulated_color += Color(0, 1, 0);
+    if (hit_sphere(Point3D(0, 0.25, -1), 0.5, r))
+        accumulated_color += Color(0, 0, 1);
+
+    if (accumulated_color.x() > 0 || accumulated_color.y() > 0 || accumulated_color.z() > 0)
+        return accumulated_color;
+
+    Vector3D unit_direction = unit_vector(r.direction());
+    auto a = 0.5 * (unit_direction.y() + 1.0);
+    return (1.0 - a) * Color(1.0, 1.0, 1.0) + a * Color(0.5, 0.7, 1.0);
 }
 
 int main()
 {
-    const int width = 1600;
-    const int height = 1000;
-    const Vector2D circleCenter(width / 2, height / 2);
-    const double radius = 100.0;
+    auto aspect_ratio = 16.0 / 9.0;
+    int image_width = 2160;
 
-    std::vector<Vector2D> rayOrigins;
-    std::vector<Vector2D> rayDirs;
+    int image_height = int(image_width / aspect_ratio);
 
-    rayOrigins.push_back(Vector2D(0, height / 2));
-    rayDirs.push_back(Vector2D(1, 0));
+    auto focal_length = 1.0;
+    auto viewport_height = 2.0;
+    auto viewport_width = viewport_height * aspect_ratio;
+    // auto camera_center = Point3D(0, 0, 0);
+    auto camera_center = Point3D(0, 0, 1);
 
-    rayOrigins.push_back(Vector2D(0, height / 4));
-    rayDirs.push_back(Vector2D(1, 0));
+    auto viewport_u = Vector3D(viewport_width, 0, 0);
+    auto viewport_v = Vector3D(0, -viewport_height, 0);
 
-    rayOrigins.push_back(Vector2D(0, 3 * height / 4));
-    rayDirs.push_back(Vector2D(1, 0));
+    auto pixel_delta_u = viewport_u / image_width;
+    auto pixel_delta_v = viewport_v / image_height;
 
-    for (double x = 0.0; x < 10.0; x += 0.1)
+    auto viewport_upper_left = camera_center - Vector3D(0, 0, focal_length) - viewport_u / 2 - viewport_v / 2;
+    auto pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u - pixel_delta_v);
+
+    std::cout << "P3\n"
+              << image_width << " " << image_height << "\n255\n";
+
+    for (int j = 0; j < image_height; j++)
     {
-        rayOrigins.push_back(Vector2D(0, 0));
-        rayDirs.push_back(Vector2D(x, 1));
-    }
-
-    std::string filename = getTimestampedFilename();
-    std::ofstream image(filename);
-    image << "P3\n"
-          << width << " " << height << "\n255\n";
-
-    for (int y = 0; y < height; ++y)
-    {
-        for (int x = 0; x < width; ++x)
+        std::clog << "\rScanlines remaining: " << (image_height - j) << ' ' << std::flush;
+        for (int i = 0; i < image_width; i++)
         {
-            Vector2D currentPoint(x, y);
-            bool isRay = false;
-            bool isIntersecting = false;
+            auto pixel_center = pixel00_loc + (i * pixel_delta_u) + (j * pixel_delta_v);
+            ray r(camera_center, pixel_center - camera_center);
 
-            for (size_t i = 0; i < rayOrigins.size(); ++i)
-            {
-                bool onRay = (x >= (int)rayOrigins[i].x && y == (int)(rayOrigins[i].y + (x - rayOrigins[i].x) * rayDirs[i].y / rayDirs[i].x));
-                bool intersects = intersectsCircle(rayOrigins[i], rayDirs[i], circleCenter, radius);
-
-                if (onRay)
-                {
-                    isRay = true;
-                    if (intersects)
-                    {
-                        isIntersecting = true;
-                        break;
-                    }
-                }
-            }
-
-            if (isRay && isIntersecting)
-            {
-                image << "0 255 0\n";
-            }
-            else if (isRay && !isIntersecting)
-            {
-                image << "0 0 255\n";
-            }
-            else if ((x - circleCenter.x) * (x - circleCenter.x) + (y - circleCenter.y) * (y - circleCenter.y) <= radius * radius)
-            {
-                image << "255 0 0\n";
-            }
-            else
-            {
-                image << "255 255 255\n";
-            }
+            Color pixel_color = ray_color(r);
+            write_color(std::cout, pixel_color);
         }
     }
 
-    image.close();
-    std::cout << "Image saved as " << filename << "\n";
-    return 0;
+    std::clog << "\rDone.                 \n";
 }
