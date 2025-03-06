@@ -4,33 +4,45 @@
 
 #include <iostream>
 
-bool hit_sphere(const Point3D &center, double radius, const ray &r)
+bool hit_sphere(const Point3D &center, double radius, const ray &r, double &t)
 {
-    Vector3D oc = center - r.origin();
+    Vector3D oc = r.origin() - center;
     auto a = dot(r.direction(), r.direction());
-    auto b = -2.0 * dot(r.direction(), oc);
+    auto b = 2.0 * dot(oc, r.direction());
     auto c = dot(oc, oc) - radius * radius;
     auto discriminant = b * b - 4 * a * c;
-    return (discriminant >= 0);
+    if (discriminant < 0)
+    {
+        return false;
+    }
+    else
+    {
+        t = (-b - sqrt(discriminant)) / (2.0 * a);
+        return true;
+    }
 }
 
-Color ray_color(const ray &r)
+Color ray_color(const ray &r, const Point3D &light_position, const Color &ambient_light, const Color &diffuse_light, const Color &sphere_color)
 {
-    Color accumulated_color(0, 0, 0);
+    double t;
+    if (hit_sphere(Point3D(0, 0, -1), 0.5, r, t))
+    {
+        Point3D hit_point = r.origin() + t * r.direction();
+        Vector3D normal = unit_vector(hit_point - Point3D(0, 0, -1));
+        Vector3D light_direction = unit_vector(light_position - hit_point);
 
-    if (hit_sphere(Point3D(-0.25, -0.25, -1), 0.5, r))
-        accumulated_color += Color(1, 0, 0);
-    if (hit_sphere(Point3D(0.25, -0.25, -1), 0.5, r))
-        accumulated_color += Color(0, 1, 0);
-    if (hit_sphere(Point3D(0, 0.25, -1), 0.5, r))
-        accumulated_color += Color(0, 0, 1);
+        Color ambient = ambient_light * sphere_color;
 
-    if (accumulated_color.x() > 0 || accumulated_color.y() > 0 || accumulated_color.z() > 0)
-        return accumulated_color;
+        double diffuse_intensity = std::max(0.0, dot(normal, light_direction));
+        Color diffuse = diffuse_intensity * diffuse_light * sphere_color;
+
+        Color final_color = ambient + diffuse;
+        return final_color;
+    }
 
     Vector3D unit_direction = unit_vector(r.direction());
-    auto a = 0.5 * (unit_direction.y() + 1.0);
-    return (1.0 - a) * Color(1.0, 1.0, 1.0) + a * Color(0.5, 0.7, 1.0);
+    t = 0.5 * (unit_direction.y() + 1.0);
+    return (1.0 - t) * Color(1.0, 1.0, 1.0) + t * Color(0.5, 0.7, 1.0);
 }
 
 int main()
@@ -40,11 +52,10 @@ int main()
 
     int image_height = int(image_width / aspect_ratio);
 
-    auto focal_length = 1.0;
+    auto focal_length = 10.0;
     auto viewport_height = 2.0;
     auto viewport_width = viewport_height * aspect_ratio;
-    // auto camera_center = Point3D(0, 0, 0);
-    auto camera_center = Point3D(0, 0, 1);
+    auto camera_center = Point3D(0, 0, 10);
 
     auto viewport_u = Vector3D(viewport_width, 0, 0);
     auto viewport_v = Vector3D(0, -viewport_height, 0);
@@ -54,6 +65,13 @@ int main()
 
     auto viewport_upper_left = camera_center - Vector3D(0, 0, focal_length) - viewport_u / 2 - viewport_v / 2;
     auto pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u - pixel_delta_v);
+
+    Point3D light_position(5, 5, 5);
+
+    Color ambient_light(0.1, 0.1, 0.1);
+    Color diffuse_light(0.8, 0.8, 0.8);
+
+    Color sphere_color(0.0, 1, 0.0);
 
     std::cout << "P3\n"
               << image_width << " " << image_height << "\n255\n";
@@ -66,7 +84,7 @@ int main()
             auto pixel_center = pixel00_loc + (i * pixel_delta_u) + (j * pixel_delta_v);
             ray r(camera_center, pixel_center - camera_center);
 
-            Color pixel_color = ray_color(r);
+            Color pixel_color = ray_color(r, light_position, ambient_light, diffuse_light, sphere_color);
             write_color(std::cout, pixel_color);
         }
     }
