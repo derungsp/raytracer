@@ -39,6 +39,10 @@ Color ray_color(const ray &r, const Point3D &light_position, const Color &ambien
         Color diffuse = diffuse_intensity * diffuse_light * sphere_color;
 
         Color final_color = ambient + diffuse;
+
+        final_color = Color(std::min(final_color.x(), 1.0),
+                            std::min(final_color.y(), 1.0),
+                            std::min(final_color.z(), 1.0));
         return final_color;
     }
 
@@ -76,7 +80,7 @@ int main()
         double angle = 2 * M_PI * frame / num_frames;
         Point3D light_position(5 * cos(angle), 5 * sin(angle), 5);
 
-        Color ambient_light(0.1, 0.1, 0.1);
+        Color ambient_light(0.2, 0.2, 0.2);
         Color diffuse_light(0.8, 0.8, 0.8);
 
         Color sphere_color(0.0, 1, 0.0);
